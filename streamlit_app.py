@@ -1,6 +1,7 @@
 """Cyberbullying Detection: Agentic LLM Judge v2 (single-file Streamlit app).
 Needs only: streamlit, python-dotenv, requests, pydantic  +  GROQ_API_KEY (or GEMINI_API_KEY) in Secrets."""
 import hashlib, json, os, re, sqlite3
+import pandas as pd
 import requests
 import streamlit as st
 from dotenv import load_dotenv
@@ -21,8 +22,8 @@ THREADS = json.loads(r'''[{"id": "t01", "expected": "Safe", "messages": [{"id": 
 def extract_text_from_image(image_path=None):
     return ""  # Future work: real OCR
 
-def build_context(msgs, k=2):
-    idx = len(msgs) - 1
+def build_context(msgs, k=2, idx=None):
+    idx = len(msgs) - 1 if idx is None else idx
     prev = msgs[max(0, idx - k):idx]
     lines = [f"[Prev Message {i + 1}] {m['text']}" for i, m in enumerate(prev)]
     lines.append(f"[TARGET MESSAGE] {msgs[idx]['text']}")
@@ -30,6 +31,7 @@ def build_context(msgs, k=2):
 
 # ---------------- LLM judge ----------------
 CACHE_PATH = "llm_cache.json"
+PROMPT_V = "v4"
 LABEL_TO_ACTION = {"Safe": "allow", "Harassment": "flag", "Severe Abuse": "escalate"}
 SYSTEM_PROMPT = """You are a content-safety moderator for a chat platform used by Pakistani users.
 Messages are in Roman Urdu, English, Urdu, or a mix (code-mixed). Spelling varies
@@ -45,10 +47,14 @@ Rules:
 - Use context: friendly teasing between friends is Safe; the same words aimed at a victim after
   earlier hostility are Harassment.
 - Do not flag profanity that is not directed at a person.
+- "language" is the language of the TARGET message: roman_urdu, urdu, english, or mixed.
+- "suggested_response" is a short, polite moderator message to the sender when the label is not Safe
+  (a warning for Harassment; a strict policy-violation notice for Severe Abuse). Empty string if Safe.
 - Reply with ONLY a JSON object, no markdown, in exactly this shape:
 {"label": "Safe|Harassment|Severe Abuse", "confidence": 0.0-1.0, "intent": "short phrase",
  "target": "who is targeted or none", "rationale": "1-2 sentences in English",
- "action": "allow|flag|escalate"}
+ "action": "allow|flag|escalate", "language": "roman_urdu|urdu|english|mixed",
+ "suggested_response": "..."}
 """
 
 def _load_cache():
@@ -122,12 +128,13 @@ def _parse(raw):
         label = "Safe"
     return {"label": label, "confidence": float(d.get("confidence", 0.5)),
             "intent": str(d.get("intent", "")), "target": str(d.get("target", "")),
-            "rationale": str(d.get("rationale", "")), "action": LABEL_TO_ACTION[label]}
+            "rationale": str(d.get("rationale", "")), "action": LABEL_TO_ACTION[label],
+            "language": str(d.get("language", "")), "suggested_response": str(d.get("suggested_response", ""))}
 
 def judge(ctx):
     provider = os.getenv("LLM_PROVIDER", "groq").lower()
     model = get_model() if provider == "groq" else os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
-    key = hashlib.sha256(f"{provider}|{model}|{ctx}".encode("utf-8")).hexdigest()
+    key = hashlib.sha256(f"{provider}|{model}|{PROMPT_V}|{ctx}".encode("utf-8")).hexdigest()
     cache = _load_cache()
     if key in cache:
         return cache[key]
@@ -136,7 +143,8 @@ def judge(ctx):
         res = _parse(raw)
     except Exception:
         res = {"label": "Safe", "confidence": 0.0, "intent": "parse_error", "target": "none",
-               "rationale": f"Unparseable LLM output: {raw[:200]}", "action": "flag"}
+               "rationale": f"Unparseable LLM output: {raw[:200]}", "action": "flag",
+               "language": "", "suggested_response": ""}
     cache[key] = res
     _save_cache(cache)
     return res
@@ -152,10 +160,15 @@ def db():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS decisions (id INTEGER PRIMARY KEY AUTOINCREMENT, prediction_id INTEGER,
         reviewer_decision TEXT, decided_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);""")
+    for col in ("language", "suggested_response"):
+        try:
+            c.execute(f"ALTER TABLE predictions ADD COLUMN {col} TEXT")
+        except sqlite3.OperationalError:
+            pass  # column already exists
     return c
 
-def run_thread(t):
-    ctx = build_context(t["messages"])
+def run_ctx(ctx, thread_id):
+    """Judge one context window and log it to SQLite."""
     try:
         res = judge(ctx)
     except KeyError as e:
@@ -163,11 +176,38 @@ def run_thread(t):
     except Exception as e:
         st.error(f"LLM call failed: {e}"); st.stop()
     with db() as c:
-        cur = c.execute("INSERT INTO predictions (thread_id,context,label,confidence,intent,target,rationale,action)"
-                        " VALUES (?,?,?,?,?,?,?,?)",
-                        (t["id"], ctx, res["label"], res["confidence"], res["intent"], res["target"], res["rationale"], res["action"]))
-        res = dict(res, prediction_id=cur.lastrowid)
-    return res
+        cur = c.execute("INSERT INTO predictions (thread_id,context,label,confidence,intent,target,rationale,action,language,suggested_response)"
+                        " VALUES (?,?,?,?,?,?,?,?,?,?)",
+                        (thread_id, ctx, res["label"], res["confidence"], res["intent"], res["target"], res["rationale"],
+                         res["action"], res.get("language", ""), res.get("suggested_response", "")))
+    return dict(res, prediction_id=cur.lastrowid)
+
+def run_thread(t):
+    return run_ctx(build_context(t["messages"]), t["id"])
+
+def scan_conversation(t):
+    """Judge EVERY message of a thread (each with its k=2 context) to see how it escalates."""
+    rows = []
+    for i, m in enumerate(t["messages"]):
+        r = run_ctx(build_context(t["messages"], idx=i), f"{t['id']}#{i + 1}")
+        rows.append({"#": i + 1, "message": m["text"], "label": r["label"], "confidence": r["confidence"],
+                     "severity": ["Safe", "Harassment", "Severe Abuse"].index(r["label"])})
+    return rows
+
+def run_batch(df, textcol, tcol, max_rows, on_progress=None):
+    """Batch-judge CSV rows. If a thread column exists, earlier rows of the same thread become context."""
+    hist, out = {}, []
+    rows = df.head(max_rows)
+    for n, (i, row) in enumerate(rows.iterrows()):
+        tid = str(row[tcol]) if tcol else f"row{i}"
+        hist.setdefault(tid, []).append({"text": str(row[textcol])})
+        r = run_ctx(build_context(hist[tid]), tid)
+        out.append({"thread_id": tid, "text": str(row[textcol]), "label": r["label"], "confidence": r["confidence"],
+                    "action": r["action"], "language": r.get("language", ""), "intent": r["intent"],
+                    "rationale": r["rationale"], "suggested_response": r.get("suggested_response", "")})
+        if on_progress:
+            on_progress((n + 1) / len(rows))
+    return out
 
 def get_decision(pid):
     with db() as c:
@@ -207,10 +247,13 @@ def show_result(res, key):
     st.markdown(f'<div class="card" style="border-left-color:{COLOR[res["label"]]}">'
                 f'{badge(res["label"])} &nbsp; <b>Action:</b> {res["action"].upper()}</div>', unsafe_allow_html=True)
     st.progress(min(max(res["confidence"], 0.0), 1.0), text=f"Confidence {res['confidence']:.0%}")
-    c1, c2 = st.columns(2)
+    c1, c2, c3 = st.columns(3)
     c1.markdown(f"**Intent**  \n{res['intent'] or '-'}")
     c2.markdown(f"**Target**  \n{res['target'] or '-'}")
+    c3.markdown(f"**Language**  \n{res.get('language') or '-'}")
     st.info(f"**Rationale:** {res['rationale']}")
+    if res.get("suggested_response"):
+        st.warning(f"**Suggested moderator response:** {res['suggested_response']}")
     with st.expander("Raw JSON"):
         st.json({k: res[k] for k in ("label", "confidence", "intent", "target", "rationale", "action")})
     dec = get_decision(res["prediction_id"])
@@ -241,6 +284,7 @@ with st.sidebar:
     st.selectbox("🎙️ Speech model", STT_MODELS, key="stt_model")
     if st.session_state.get("_last_model") not in (None, st.session_state.judge_model):
         R.clear()  # results belong to the previous model
+        st.session_state.pop("scans", None)
     st.session_state["_last_model"] = st.session_state.judge_model
     if st.button("▶ Analyze all threads", type="primary", width="stretch"):
         analyze_all()
@@ -263,7 +307,7 @@ k3.metric("Safe", sum(r["label"] == "Safe" for r in done))
 k4.metric("Flagged", sum(r["action"] == "flag" for r in done))
 k5.metric("Escalated", sum(r["action"] == "escalate" for r in done))
 
-tab_review, tab_live, tab_voice, tab_eval, tab_hist = st.tabs(["📋 Thread Review", "⚡ Live Analyzer", "🎙️ Voice Analyzer", "📊 Evaluation", "🗂️ History"])
+tab_review, tab_live, tab_voice, tab_batch, tab_eval, tab_hist = st.tabs(["📋 Thread Review", "⚡ Live Analyzer", "🎙️ Voice Analyzer", "📦 Batch CSV", "📊 Evaluation", "🗂️ Analytics & Log"])
 
 # ----- Tab 1: Thread review -----
 with tab_review:
@@ -296,6 +340,17 @@ with tab_review:
                 st.rerun()
         else:
             show_result(R[t["id"]], t["id"])
+        st.divider()
+        if st.button("🔬 Scan whole conversation", key=f"scan_{t['id']}",
+                     help="Judges every message to show how the conversation escalates"):
+            with st.spinner("Scanning every message..."):
+                st.session_state.setdefault("scans", {})[t["id"]] = scan_conversation(t)
+        sc = st.session_state.get("scans", {}).get(t["id"])
+        if sc:
+            sdf = pd.DataFrame(sc)
+            st.markdown("**Escalation timeline** (0 = Safe, 1 = Harassment, 2 = Severe Abuse)")
+            st.line_chart(sdf.set_index("#")["severity"], height=160)
+            st.dataframe(sdf[["#", "message", "label", "confidence"]], width="stretch", hide_index=True)
 
 # ----- Tab 2: Live analyzer -----
 with tab_live:
@@ -339,7 +394,36 @@ with tab_voice:
     if "voice_res" in st.session_state:
         show_result(st.session_state.voice_res, "voice")
 
-# ----- Tab 4: Evaluation -----
+# ----- Tab 4: Batch CSV -----
+with tab_batch:
+    st.subheader("Batch analysis from CSV")
+    st.caption("Upload a CSV with a text column (text / message / comment). Optional `thread_id` column: earlier rows of the same thread are used as context.")
+    sample = pd.DataFrame({"thread_id": ["a", "a", "a", "b"],
+                           "text": ["Tum kal kahan the?", "Tumhe kya matlab", "Tum ek bewakoof ho", "Good morning everyone"]})
+    st.download_button("⬇ Sample CSV", sample.to_csv(index=False).encode("utf-8"), "sample_batch.csv", "text/csv")
+    up_csv = st.file_uploader("Upload CSV", type=["csv"], key="batch_csv")
+    max_rows = st.slider("Max rows to analyze (free-tier friendly)", 5, 200, 40)
+    if up_csv is not None:
+        try:
+            bdf = pd.read_csv(up_csv)
+        except UnicodeDecodeError:
+            up_csv.seek(0); bdf = pd.read_csv(up_csv, encoding="latin1")
+        low = {c.lower(): c for c in bdf.columns}
+        textcol = next((low[k] for k in ("text", "message", "comment", "content") if k in low), bdf.columns[0])
+        tcol = next((low[k] for k in ("thread_id", "thread", "conversation") if k in low), None)
+        st.caption(f"Text column: **{textcol}** · Thread column: **{tcol or 'none (each row independent)'}** · {len(bdf)} rows")
+        st.dataframe(bdf.head(5), width="stretch", hide_index=True)
+        if st.button("▶ Run batch", type="primary"):
+            bar = st.progress(0.0, text="Analyzing...")
+            st.session_state.batch_out = pd.DataFrame(run_batch(bdf, textcol, tcol, max_rows, bar.progress))
+            bar.empty()
+    if "batch_out" in st.session_state:
+        bo = st.session_state.batch_out
+        st.bar_chart(bo["label"].value_counts().reindex(LABELS, fill_value=0))
+        st.dataframe(bo, width="stretch", hide_index=True)
+        st.download_button("⬇ Download results CSV", bo.to_csv(index=False).encode("utf-8"), "batch_results.csv", "text/csv")
+
+# ----- Tab 5: Evaluation -----
 with tab_eval:
     st.subheader("Accuracy on 20 demo threads")
     if st.button("Run evaluation"):
@@ -369,17 +453,22 @@ with tab_eval:
     else:
         st.caption("Click **Run evaluation** (or Analyze all in the sidebar).")
 
-# ----- Tab 5: History -----
+# ----- Tab 6: Analytics & Log -----
 with tab_hist:
-    st.subheader("Moderation log (SQLite)")
+    st.subheader("Analytics & moderation log")
     with db() as c:
         hist = pd.read_sql_query(
-            "SELECT p.id, p.thread_id, p.label, p.action, p.confidence, p.rationale, "
+            "SELECT p.id, p.thread_id, p.label, p.action, p.confidence, p.language, p.rationale, p.suggested_response, "
             "COALESCE(d.reviewer_decision,'pending') AS reviewer, p.created_at "
             "FROM predictions p LEFT JOIN decisions d ON d.prediction_id=p.id ORDER BY p.id DESC", c)
     if len(hist):
+        g1, g2, g3 = st.columns(3)
+        g1.markdown("**Labels**"); g1.bar_chart(hist["label"].value_counts().reindex(LABELS, fill_value=0))
+        g2.markdown("**Language**"); g2.bar_chart(hist["language"].replace("", "unknown").value_counts())
+        g3.markdown("**Reviewer decisions**"); g3.bar_chart(hist["reviewer"].value_counts())
+        st.markdown("**Average confidence by label**")
+        st.dataframe(hist.groupby("label")["confidence"].agg(["count", "mean"]).round(2), width="stretch")
         st.dataframe(hist, width="stretch", hide_index=True)
-        st.download_button("⬇ Download CSV", hist.to_csv(index=False).encode("utf-8"),
-                           "moderation_log.csv", "text/csv")
+        st.download_button("⬇ Download CSV", hist.to_csv(index=False).encode("utf-8"), "moderation_log.csv", "text/csv")
     else:
         st.caption("No predictions logged yet.")
