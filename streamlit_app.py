@@ -65,25 +65,42 @@ def _save_cache(c):
     except Exception:
         pass
 
-DEPRECATED_GROQ = {"openai/gpt-oss-120b", "whisper-large-v3", "whisper-large-v3-turbo"}
+DEPRECATED_GROQ = {"openai/gpt-oss-120b"}
+JUDGE_MODELS = ["openai/gpt-oss-120b", "openai/gpt-oss-20b"]
+STT_MODELS = ["whisper-large-v3-turbo", "whisper-large-v3"]
+GROQ_URL = "https://api.groq.com/openai/v1"
 
 
-def _call_groq(ctx):
-    model = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
-    if model in DEPRECATED_GROQ:  # retired by Groq; auto-switch
-        model = "openai/gpt-oss-20b"
-    body = {"model": model, "temperature": 0,
+def get_model():
+    m = st.session_state.get("judge_model") or os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+    return "openai/gpt-oss-120b" if m in DEPRECATED_GROQ else m
+
+
+def _call_groq(ctx, model):
+    body = {"model": model, "temperature": 0, "reasoning_effort": "low",
             "response_format": {"type": "json_object"},
             "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": ctx}]}
     headers = {"Authorization": f"Bearer {os.environ['GROQ_API_KEY']}"}
-    url = "https://api.groq.com/openai/v1/chat/completions"
-    r = requests.post(url, headers=headers, json=body, timeout=60)
-    if r.status_code == 400:  # retry without JSON mode; output is parsed leniently anyway
-        body.pop("response_format")
-        r = requests.post(url, headers=headers, json=body, timeout=60)
+    r = requests.post(f"{GROQ_URL}/chat/completions", headers=headers, json=body, timeout=90)
+    if r.status_code == 400:  # retry without optional params
+        body.pop("response_format"); body.pop("reasoning_effort")
+        r = requests.post(f"{GROQ_URL}/chat/completions", headers=headers, json=body, timeout=90)
     if not r.ok:
         raise RuntimeError(f"Groq {r.status_code} (model={model}): {r.text[:300]}")
     return r.json()["choices"][0]["message"]["content"]
+
+
+def transcribe(audio_bytes, filename, model, language=None):
+    """Whisper speech-to-text via Groq. language: 'ur', 'en' or None for auto-detect."""
+    data = {"model": model, "response_format": "json", "temperature": "0"}
+    if language:
+        data["language"] = language
+    r = requests.post(f"{GROQ_URL}/audio/transcriptions",
+                      headers={"Authorization": f"Bearer {os.environ['GROQ_API_KEY']}"},
+                      files={"file": (filename, audio_bytes)}, data=data, timeout=120)
+    if not r.ok:
+        raise RuntimeError(f"Whisper {r.status_code} (model={model}): {r.text[:300]}")
+    return r.json().get("text", "").strip()
 
 
 def _call_gemini(ctx):
@@ -109,11 +126,12 @@ def _parse(raw):
 
 def judge(ctx):
     provider = os.getenv("LLM_PROVIDER", "groq").lower()
-    key = hashlib.sha256(f"{provider}|{ctx}".encode("utf-8")).hexdigest()
+    model = get_model() if provider == "groq" else os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    key = hashlib.sha256(f"{provider}|{model}|{ctx}".encode("utf-8")).hexdigest()
     cache = _load_cache()
     if key in cache:
         return cache[key]
-    raw = _call_groq(ctx) if provider == "groq" else _call_gemini(ctx)
+    raw = _call_groq(ctx, model) if provider == "groq" else _call_gemini(ctx)
     try:
         res = _parse(raw)
     except Exception:
@@ -218,7 +236,12 @@ def analyze_all():
 # ----- Sidebar -----
 with st.sidebar:
     st.header("🛡️ Control Panel")
-    st.caption(f"Provider: **{os.getenv('LLM_PROVIDER', 'groq')}**  \nModel: **{os.getenv('GROQ_MODEL', 'openai/gpt-oss-20b')}**")
+    _def = get_model()
+    st.selectbox("🧠 Judge model", JUDGE_MODELS, index=JUDGE_MODELS.index(_def) if _def in JUDGE_MODELS else 0, key="judge_model")
+    st.selectbox("🎙️ Speech model", STT_MODELS, key="stt_model")
+    if st.session_state.get("_last_model") not in (None, st.session_state.judge_model):
+        R.clear()  # results belong to the previous model
+    st.session_state["_last_model"] = st.session_state.judge_model
     if st.button("▶ Analyze all threads", type="primary", width="stretch"):
         analyze_all()
     if st.button("↺ Clear results (UI only)", width="stretch"):
@@ -240,7 +263,7 @@ k3.metric("Safe", sum(r["label"] == "Safe" for r in done))
 k4.metric("Flagged", sum(r["action"] == "flag" for r in done))
 k5.metric("Escalated", sum(r["action"] == "escalate" for r in done))
 
-tab_review, tab_live, tab_eval, tab_hist = st.tabs(["📋 Thread Review", "⚡ Live Analyzer", "📊 Evaluation", "🗂️ History"])
+tab_review, tab_live, tab_voice, tab_eval, tab_hist = st.tabs(["📋 Thread Review", "⚡ Live Analyzer", "🎙️ Voice Analyzer", "📊 Evaluation", "🗂️ History"])
 
 # ----- Tab 1: Thread review -----
 with tab_review:
@@ -288,7 +311,35 @@ with tab_live:
     if "live" in st.session_state:
         show_result(st.session_state.live, "live")
 
-# ----- Tab 3: Evaluation -----
+# ----- Tab 3: Voice analyzer (Whisper -> LLM Judge) -----
+with tab_voice:
+    st.subheader("Voice note analysis")
+    st.caption("Record or upload a voice note (Urdu, Roman Urdu speech, or English). Whisper transcribes it, then the LLM Judge classifies it.")
+    lang_label = st.radio("Spoken language", ["Auto-detect", "Urdu", "English"], horizontal=True)
+    lang = {"Auto-detect": None, "Urdu": "ur", "English": "en"}[lang_label]
+    audio, fname = None, "voice.wav"
+    if hasattr(st, "audio_input"):
+        rec = st.audio_input("🎤 Record a voice note")
+        if rec is not None:
+            audio, fname = rec.getvalue(), "voice.wav"
+    up = st.file_uploader("...or upload audio", type=["wav", "mp3", "m4a", "ogg", "webm", "flac"])
+    if up is not None:
+        audio, fname = up.getvalue(), up.name
+    if st.button("📝 Transcribe", type="primary", disabled=audio is None):
+        with st.spinner("Whisper is transcribing..."):
+            try:
+                st.session_state["voice_text"] = transcribe(audio, fname, st.session_state.stt_model, lang)
+            except Exception as e:
+                st.error(f"Transcription failed: {e}")
+    if "voice_text" in st.session_state:
+        txt = st.text_area("Transcript (you can correct it before analyzing)", key="voice_text", height=100)
+        if st.button("🔍 Analyze transcript", disabled=not txt.strip()):
+            with st.spinner("Running LLM Judge..."):
+                st.session_state.voice_res = run_thread({"id": "voice", "messages": [{"text": txt.strip()}]})
+    if "voice_res" in st.session_state:
+        show_result(st.session_state.voice_res, "voice")
+
+# ----- Tab 4: Evaluation -----
 with tab_eval:
     st.subheader("Accuracy on 20 demo threads")
     if st.button("Run evaluation"):
@@ -318,7 +369,7 @@ with tab_eval:
     else:
         st.caption("Click **Run evaluation** (or Analyze all in the sidebar).")
 
-# ----- Tab 4: History -----
+# ----- Tab 5: History -----
 with tab_hist:
     st.subheader("Moderation log (SQLite)")
     with db() as c:
