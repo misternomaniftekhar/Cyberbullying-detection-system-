@@ -88,8 +88,8 @@ POLICY_DAYS, POLICY_THRESHOLD = 7, 2      # repeat offender: >=2 violations in 7
 HALF_LIFE_DAYS = 14.0                      # user-risk decay
 DB_PATH = os.getenv("MODERATION_DB", "moderation.db")
 
-DEPRECATED_GROQ = {"openai/gpt-oss-120bt"}
-JUDGE_MODELS = ["openai/gpt-oss-120b"]
+DEPRECATED_GROQ = {"openai/gpt-oss-120b"}
+JUDGE_MODELS = ["openai/gpt-oss-120b", "openai/gpt-oss-20b"]
 STT_MODELS = ["whisper-large-v3-turbo", "whisper-large-v3"]
 VISION_MODELS = ["qwen/qwen3.8-27b", "meta-llama/llama-4-scout-17b-16e-instruct"]
 GROQ_URL = "https://api.groq.com/openai/v1"
