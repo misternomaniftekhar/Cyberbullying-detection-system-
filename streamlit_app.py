@@ -1,4 +1,4 @@
-"""Cyberbullying Detection: Agentic LLM Judge (single-file Streamlit app).
+"""Cyberbullying Detection: Agentic LLM Judge v2 (single-file Streamlit app).
 Needs only: streamlit, python-dotenv, requests, pydantic  +  GROQ_API_KEY (or GEMINI_API_KEY) in Secrets."""
 import hashlib, json, os, re, sqlite3
 import requests
@@ -65,7 +65,7 @@ def _save_cache(c):
     except Exception:
         pass
 
-DEPRECATED_GROQ = {"openai/gpt-oss-20b"}
+DEPRECATED_GROQ = {"openai/gpt-oss-120b", "whisper-large-v3", "whisper-large-v3-turbo"}
 
 
 def _call_groq(ctx):
@@ -160,61 +160,175 @@ def save_decision(pid, d):
     with db() as c:
         c.execute("INSERT INTO decisions (prediction_id, reviewer_decision) VALUES (?,?)", (pid, d))
 
-# ---------------- Dashboard ----------------
-st.session_state.setdefault("results", {})
-st.session_state.setdefault("selected", THREADS[0]["id"])
+# ---------------- Dashboard v2 ----------------
+import pandas as pd
+
+LABELS = ["Safe", "Harassment", "Severe Abuse"]
+COLOR = {"Safe": "#16a34a", "Harassment": "#ea580c", "Severe Abuse": "#dc2626"}
 ICON = {"Safe": "🟢", "Harassment": "🟠", "Severe Abuse": "🔴"}
 
-st.title("Cyberbullying Detection: Agentic LLM Judge")
-left, right = st.columns([1, 1.4])
+st.markdown("""
+<style>
+.block-container {padding-top: 1.5rem;}
+.badge {display:inline-block;padding:3px 12px;border-radius:999px;color:#fff;font-weight:600;font-size:0.85rem;}
+.card {border:1px solid rgba(128,128,128,.3);border-left-width:6px;border-radius:10px;padding:14px 16px;margin:8px 0;}
+.msg {background:rgba(128,128,128,.12);border-radius:8px;padding:8px 12px;margin:4px 0;}
+.target {border:2px solid #6366f1;}
+</style>""", unsafe_allow_html=True)
 
-with left:
-    st.subheader("Thread Feed")
-    if st.button("Analyze all threads"):
-        with st.spinner("Running LLM Judge..."):
-            for t in THREADS:
-                if t["id"] not in st.session_state.results:
-                    st.session_state.results[t["id"]] = run_thread(t)
-    for t in THREADS:
-        res = st.session_state.results.get(t["id"])
-        icon = ICON.get(res["label"], "⚪") if res else "⚪"
-        if st.button(f"{icon} {t['id']}: {t['messages'][-1]['text'][:55]}", key=f"b_{t['id']}", use_container_width=True):
-            st.session_state.selected = t["id"]
+st.session_state.setdefault("results", {})
+st.session_state.setdefault("selected", THREADS[0]["id"])
+R = st.session_state.results
 
-with right:
-    st.subheader("Inspector")
-    t = next(x for x in THREADS if x["id"] == st.session_state.selected)
-    for m in t["messages"][:-1]:
-        st.markdown(f"> {m['text']}")
-    st.markdown(f"**TARGET:** {t['messages'][-1]['text']}")
-    if t["id"] not in st.session_state.results:
-        if st.button("Analyze this thread", type="primary"):
-            with st.spinner("Running LLM Judge..."):
-                st.session_state.results[t["id"]] = run_thread(t)
-            st.rerun()
-    else:
-        res = st.session_state.results[t["id"]]
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Label", res["label"]); c2.metric("Confidence", f"{res['confidence']:.2f}"); c3.metric("Action", res["action"])
-        st.markdown(f"**Intent:** {res['intent']}  \n**Target:** {res['target']}")
-        st.info(f"**Rationale:** {res['rationale']}")
+
+def badge(label):
+    return f'<span class="badge" style="background:{COLOR[label]}">{label}</span>'
+
+
+def show_result(res, key):
+    st.markdown(f'<div class="card" style="border-left-color:{COLOR[res["label"]]}">'
+                f'{badge(res["label"])} &nbsp; <b>Action:</b> {res["action"].upper()}</div>', unsafe_allow_html=True)
+    st.progress(min(max(res["confidence"], 0.0), 1.0), text=f"Confidence {res['confidence']:.0%}")
+    c1, c2 = st.columns(2)
+    c1.markdown(f"**Intent**  \n{res['intent'] or '-'}")
+    c2.markdown(f"**Target**  \n{res['target'] or '-'}")
+    st.info(f"**Rationale:** {res['rationale']}")
+    with st.expander("Raw JSON"):
         st.json({k: res[k] for k in ("label", "confidence", "intent", "target", "rationale", "action")})
-        existing = get_decision(res["prediction_id"])
-        if existing:
-            st.success(f"Reviewer decision: {existing}")
-        else:
-            a, d = st.columns(2)
-            if a.button("✅ Approve", use_container_width=True):
-                save_decision(res["prediction_id"], "approve"); st.rerun()
-            if d.button("❌ Dismiss", use_container_width=True):
-                save_decision(res["prediction_id"], "dismiss"); st.rerun()
+    dec = get_decision(res["prediction_id"])
+    if dec:
+        st.success(f"Reviewer decision: {dec}")
+    else:
+        a, d = st.columns(2)
+        if a.button("✅ Approve", key=f"a_{key}", width="stretch"):
+            save_decision(res["prediction_id"], "approve"); st.rerun()
+        if d.button("❌ Dismiss", key=f"d_{key}", width="stretch"):
+            save_decision(res["prediction_id"], "dismiss"); st.rerun()
 
+
+def analyze_all():
+    bar = st.progress(0.0, text="Running LLM Judge...")
+    for i, t in enumerate(THREADS):
+        if t["id"] not in R:
+            R[t["id"]] = run_thread(t)
+        bar.progress((i + 1) / len(THREADS), text=f"Analyzed {i + 1}/{len(THREADS)}")
+    bar.empty()
+
+
+# ----- Sidebar -----
+with st.sidebar:
+    st.header("🛡️ Control Panel")
+    st.caption(f"Provider: **{os.getenv('LLM_PROVIDER', 'groq')}**  \nModel: **{os.getenv('GROQ_MODEL', 'openai/gpt-oss-20b')}**")
+    if st.button("▶ Analyze all threads", type="primary", width="stretch"):
+        analyze_all()
+    if st.button("↺ Clear results (UI only)", width="stretch"):
+        R.clear(); st.rerun()
     st.divider()
-    if st.button("Run accuracy on 20 demo threads"):
-        with st.spinner("Evaluating..."):
-            ok = 0
-            for x in THREADS:
-                r = st.session_state.results.get(x["id"]) or run_thread(x)
-                st.session_state.results[x["id"]] = r
-                ok += r["label"] == x["expected"]
-        st.success(f"Accuracy: {ok}/{len(THREADS)} = {ok / len(THREADS):.0%}")
+    flt = st.multiselect("Filter feed", LABELS + ["Not analyzed"], default=LABELS + ["Not analyzed"])
+    st.divider()
+    st.caption("Zero-training LLM Judge · Roman Urdu + English · k=2 context window")
+
+st.title("🛡️ Cyberbullying Detection System")
+st.caption("Agentic LLM Judge: no training data, works on day 0")
+
+# ----- KPI row -----
+done = [R[t["id"]] for t in THREADS if t["id"] in R]
+k1, k2, k3, k4, k5 = st.columns(5)
+k1.metric("Threads", len(THREADS))
+k2.metric("Analyzed", len(done))
+k3.metric("Safe", sum(r["label"] == "Safe" for r in done))
+k4.metric("Flagged", sum(r["action"] == "flag" for r in done))
+k5.metric("Escalated", sum(r["action"] == "escalate" for r in done))
+
+tab_review, tab_live, tab_eval, tab_hist = st.tabs(["📋 Thread Review", "⚡ Live Analyzer", "📊 Evaluation", "🗂️ History"])
+
+# ----- Tab 1: Thread review -----
+with tab_review:
+    left, right = st.columns([1, 1.5])
+    with left:
+        st.subheader("Thread Feed")
+        shown = 0
+        for t in THREADS:
+            res = R.get(t["id"])
+            tag = res["label"] if res else "Not analyzed"
+            if tag not in flt:
+                continue
+            shown += 1
+            icon = ICON.get(tag, "⚪")
+            if st.button(f"{icon} {t['id']} · {t['messages'][-1]['text'][:50]}", key=f"b_{t['id']}", width="stretch"):
+                st.session_state.selected = t["id"]
+        if not shown:
+            st.caption("No threads match the filter.")
+    with right:
+        st.subheader("Inspector")
+        t = next(x for x in THREADS if x["id"] == st.session_state.selected)
+        st.markdown(f"**Thread {t['id']}**")
+        for m in t["messages"][:-1]:
+            st.markdown(f'<div class="msg">💬 {m["text"]}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="msg target">🎯 <b>{t["messages"][-1]["text"]}</b></div>', unsafe_allow_html=True)
+        if t["id"] not in R:
+            if st.button("🔍 Analyze this thread", type="primary"):
+                with st.spinner("Running LLM Judge..."):
+                    R[t["id"]] = run_thread(t)
+                st.rerun()
+        else:
+            show_result(R[t["id"]], t["id"])
+
+# ----- Tab 2: Live analyzer -----
+with tab_live:
+    st.subheader("Try your own message")
+    st.caption("Type any Roman Urdu / English message. Add earlier messages for context (one per line, optional).")
+    ctx_in = st.text_area("Previous messages (optional, max 2 used)", height=80, placeholder="Tum kal kahan the?\\nTumhe kya matlab")
+    msg_in = st.text_input("Target message", placeholder="Tum bohat bewakoof ho")
+    if st.button("Analyze message", type="primary", disabled=not msg_in.strip()):
+        prev = [x.strip() for x in ctx_in.splitlines() if x.strip()]
+        live = {"id": "live", "messages": [{"text": x} for x in prev] + [{"text": msg_in.strip()}]}
+        with st.spinner("Running LLM Judge..."):
+            st.session_state.live = run_thread(live)
+    if "live" in st.session_state:
+        show_result(st.session_state.live, "live")
+
+# ----- Tab 3: Evaluation -----
+with tab_eval:
+    st.subheader("Accuracy on 20 demo threads")
+    if st.button("Run evaluation"):
+        analyze_all()
+    rows = [{"thread": t["id"], "expected": t["expected"], "predicted": R[t["id"]]["label"],
+             "confidence": R[t["id"]]["confidence"]} for t in THREADS if t["id"] in R]
+    if rows:
+        df = pd.DataFrame(rows)
+        df["correct"] = df.expected == df.predicted
+        a1, a2 = st.columns(2)
+        a1.metric("Accuracy", f"{df.correct.mean():.0%}", f"{int(df.correct.sum())}/{len(df)}")
+        sev = df[df.expected != "Safe"]
+        a2.metric("Harm detection recall", f"{(sev.predicted != 'Safe').mean():.0%}" if len(sev) else "-")
+        st.markdown("**Confusion matrix** (rows = expected, columns = predicted)")
+        cm = pd.crosstab(df.expected, df.predicted).reindex(index=LABELS, columns=LABELS, fill_value=0)
+        st.dataframe(cm, width="stretch")
+        prec = {}
+        for l in LABELS:
+            p = (df.predicted == l).sum(); tp = ((df.predicted == l) & (df.expected == l)).sum()
+            r = (df.expected == l).sum()
+            prec[l] = {"precision": tp / p if p else 0, "recall": tp / r if r else 0}
+        st.bar_chart(pd.DataFrame(prec).T)
+        miss = df[~df.correct]
+        if len(miss):
+            st.markdown("**Misclassified**")
+            st.dataframe(miss, width="stretch", hide_index=True)
+    else:
+        st.caption("Click **Run evaluation** (or Analyze all in the sidebar).")
+
+# ----- Tab 4: History -----
+with tab_hist:
+    st.subheader("Moderation log (SQLite)")
+    with db() as c:
+        hist = pd.read_sql_query(
+            "SELECT p.id, p.thread_id, p.label, p.action, p.confidence, p.rationale, "
+            "COALESCE(d.reviewer_decision,'pending') AS reviewer, p.created_at "
+            "FROM predictions p LEFT JOIN decisions d ON d.prediction_id=p.id ORDER BY p.id DESC", c)
+    if len(hist):
+        st.dataframe(hist, width="stretch", hide_index=True)
+        st.download_button("⬇ Download CSV", hist.to_csv(index=False).encode("utf-8"),
+                           "moderation_log.csv", "text/csv")
+    else:
+        st.caption("No predictions logged yet.")
