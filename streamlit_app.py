@@ -4,6 +4,8 @@
 # Secrets / env:  GROQ_API_KEY  (or LLM_PROVIDER=gemini + GEMINI_API_KEY)
 # Optional env:   GROQ_MODEL, GROQ_VISION_MODEL, GEMINI_MODEL, MODERATION_DB
 #
+# What's new in v8: a redesigned interface (home page, one-page-at-a-time navigation, cleaner cards, collapsible help)
+#
 # What's new in v7 (agentic reasoning, policy control, threat triage, multilingual parity)
 #     * Adversarial Debate: prosecutor and defender agents argue, an arbiter decides; compared head-to-head with the single judge
 #     * Policy Sandbox: edit the community policy (strict school / lenient friends / custom), A/B-test it on the demo set,
@@ -1735,16 +1737,56 @@ _PREV_RE = re.compile(r"^\[Prev Message \d+\]\s*")
 
 st.markdown("""
 <style>
-.block-container {padding-top: 1.5rem;}
-.badge {display:inline-block;padding:3px 12px;border-radius:999px;color:#fff;font-weight:600;font-size:0.85rem;}
-.chip {display:inline-block;padding:2px 10px;border-radius:999px;border:1px solid rgba(128,128,128,.5);font-size:0.78rem;margin-left:6px;}
-.card {border:1px solid rgba(128,128,128,.3);border-left-width:6px;border-radius:10px;padding:14px 16px;margin:8px 0;}
-.msg {background:rgba(128,128,128,.12);border-radius:8px;padding:8px 12px;margin:4px 0;unicode-bidi:plaintext;}
-.target {border:2px solid #6366f1;}
-mark {background:#fde68a;color:#111;padding:0 3px;border-radius:3px;}
-mark.hot {background:#fecaca;border-bottom:2px solid #dc2626;font-weight:600;}
-.crit {border:1px solid rgba(128,128,128,.35);border-radius:10px;padding:10px 12px;height:100%;}
+:root {--accent:#6366f1; --line:rgba(128,128,128,.28); --soft:rgba(128,128,128,.07);}
+.block-container {padding-top:1.1rem; max-width:1240px;}
+h1,h2,h3 {letter-spacing:-.01em;}
+h3 {font-size:1.22rem !important;}
+[data-testid="stMetric"] {background:var(--soft); border:1px solid var(--line); border-radius:14px; padding:12px 16px;}
+[data-testid="stMetricLabel"] p {font-size:.8rem; opacity:.75;}
+[data-testid="stMetricValue"] {font-size:1.45rem;}
+.stButton>button, .stDownloadButton>button, [data-testid="stFormSubmitButton"] button {border-radius:10px; font-weight:600;}
+[data-testid="stExpander"] {border-radius:12px; border-color:var(--line);}
+[data-testid="stVerticalBlockBorderWrapper"] {border-radius:14px;}
+[data-testid="stDataFrame"] {border-radius:12px; overflow:hidden;}
+/* hero */
+.hero {display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; padding:18px 22px;
+       border-radius:18px; border:1px solid var(--line); margin-bottom:10px;
+       background:linear-gradient(120deg, rgba(99,102,241,.18), rgba(99,102,241,.03) 65%);}
+.hero h1 {font-size:1.5rem; margin:0; padding:0; line-height:1.25;}
+.hero p {margin:3px 0 0; opacity:.78; font-size:.92rem;}
+.chips {display:flex; gap:6px; flex-wrap:wrap;}
+.chip {display:inline-block; padding:2px 10px; border-radius:999px; border:1px solid var(--line); font-size:.78rem; margin-left:6px; background:var(--soft);}
+.chips .chip {margin-left:0;}
+.chip.ok {border-color:#16a34a; color:#16a34a;} .chip.bad {border-color:#dc2626; color:#dc2626;} .chip.on {border-color:var(--accent); color:var(--accent);}
+/* navigation: radios rendered as pills */
+.st-key-nav_section div[role="radiogroup"], [class*="st-key-nav_page_"] div[role="radiogroup"] {display:flex; flex-wrap:wrap; gap:8px;}
+.st-key-nav_section label[data-baseweb="radio"], [class*="st-key-nav_page_"] label[data-baseweb="radio"] {
+  border:1px solid var(--line); border-radius:999px; padding:5px 15px; margin:0; background:var(--soft); cursor:pointer;}
+.st-key-nav_section label[data-baseweb="radio"] > div:first-child, [class*="st-key-nav_page_"] label[data-baseweb="radio"] > div:first-child {display:none;}
+.st-key-nav_section label[data-baseweb="radio"] p {font-weight:700; font-size:.95rem;}
+[class*="st-key-nav_page_"] label[data-baseweb="radio"] p {font-size:.85rem;}
+.st-key-nav_section label[data-baseweb="radio"]:has(input:checked), [class*="st-key-nav_page_"] label[data-baseweb="radio"]:has(input:checked) {background:var(--accent); border-color:var(--accent);}
+.st-key-nav_section label[data-baseweb="radio"]:has(input:checked) *, [class*="st-key-nav_page_"] label[data-baseweb="radio"]:has(input:checked) * {color:#fff !important;}
+[class*="st-key-nav_page_"] {margin-top:-6px; margin-bottom:6px;}
+/* components */
+.badge {display:inline-block; padding:3px 12px; border-radius:999px; color:#fff; font-weight:600; font-size:.85rem;}
+.card {border:1px solid var(--line); border-left-width:6px; border-radius:12px; padding:14px 16px; margin:8px 0; background:var(--soft);}
+.msg {background:rgba(128,128,128,.12); border-radius:10px; padding:8px 12px; margin:4px 0; unicode-bidi:plaintext;}
+.target {border:2px solid var(--accent);}
+.tile {border:1px solid var(--line); border-radius:14px; padding:14px 16px; background:var(--soft);}
+.flag-item {border:1px solid var(--line); border-left-width:5px; border-radius:10px; padding:9px 12px; margin:6px 0; background:var(--soft);}
+.flag-item .meta {font-size:.78rem; opacity:.7;}
+mark {background:#fde68a; color:#111; padding:0 3px; border-radius:3px;}
+mark.hot {background:#fecaca; border-bottom:2px solid #dc2626; font-weight:600;}
+.crit {border:1px solid var(--line); border-radius:12px; padding:10px 12px; height:100%; background:var(--soft);}
+section[data-testid="stSidebar"] .brand {font-size:1.15rem; font-weight:800; margin-bottom:2px;}
+section[data-testid="stSidebar"] .brand-sub {font-size:.8rem; opacity:.7; margin-bottom:10px;}
 </style>""", unsafe_allow_html=True)
+
+def intro(text):
+    """Long explanations live in a collapsed expander so each page starts clean."""
+    with st.expander("ℹ️ How this works"):
+        st.markdown(text)
 
 st.session_state.setdefault("results", {})
 st.session_state.setdefault("selected", THREADS[0]["id"])
@@ -1836,82 +1878,142 @@ def analyze_all():
         st.warning(f"{bad} of {len(results)} threads could not be judged by the LLM (see status). They are in the Review Queue.")
 
 
-# ----- API key banner -----
+# ----- Sidebar: brand, primary action, settings (collapsed) -----
 _prov = os.getenv("LLM_PROVIDER", "groq").lower()
-if not os.environ.get("GROQ_API_KEY" if _prov == "groq" else "GEMINI_API_KEY"):
-    st.warning(f"No {'GROQ_API_KEY' if _prov == 'groq' else 'GEMINI_API_KEY'} found. Add it in Streamlit Secrets or .env. "
-               "Until then only the offline keyword heuristic runs (if enabled in the sidebar).")
-
-# ----- Sidebar -----
+_has_key = bool(os.environ.get("GROQ_API_KEY" if _prov == "groq" else "GEMINI_API_KEY"))
 with st.sidebar:
-    st.header("🛡️ Control Panel")
-    _def = get_model()
-    st.selectbox("🧠 Judge model", JUDGE_MODELS, index=JUDGE_MODELS.index(_def) if _def in JUDGE_MODELS else 0, key="judge_model")
-    st.selectbox("🎙️ Speech model", STT_MODELS, key="stt_model")
-    st.selectbox("👁️ Vision (OCR) model", VISION_MODELS, key="vision_model")
+    st.markdown('<div class="brand">🛡️ Cyberbullying Detection</div><div class="brand-sub">Agentic LLM judge · Roman Urdu · Urdu · English</div>', unsafe_allow_html=True)
+    if st.button("▶ Analyze demo threads", type="primary", width="stretch", help=f"Judge all {len(THREADS)} demo threads in parallel"):
+        analyze_all()
+    with st.expander("🧠 Models"):
+        _def = get_model()
+        st.selectbox("Judge", JUDGE_MODELS, index=JUDGE_MODELS.index(_def) if _def in JUDGE_MODELS else 0, key="judge_model")
+        st.selectbox("Speech (Whisper)", STT_MODELS, key="stt_model")
+        st.selectbox("Vision (OCR)", VISION_MODELS, key="vision_model")
     if st.session_state.get("_last_model") not in (None, st.session_state.judge_model):
         R.clear()  # results belong to the previous model
         st.session_state.pop("scans", None)
     st.session_state["_last_model"] = st.session_state.judge_model
-    with st.expander("⚙️ Performance & policy"):
+    with st.expander("⚙️ Settings"):
         st.slider("Parallel workers", 1, 8, 3, key="workers", help="Concurrent LLM calls. Lower this if you hit rate limits (429); retries with backoff are automatic.")
         st.toggle("Offline heuristic fallback", value=True, key="use_heur", help="If the LLM is unreachable, use a keyword heuristic (always flagged for human review) instead of failing.")
         st.toggle("🧠 Moderator memory (few-shot)", value=False, key="use_memory",
                   help="Give the judge the most similar past messages that a human moderator reviewed. Learns from corrections without training.")
         if st.session_state.get("active_policy"):
-            st.caption("📜 Custom community policy is active (Moderation → Policy Sandbox).")
+            st.caption("📜 Custom community policy is active (Moderation → Policy).")
         st.toggle("Auto-escalate repeat offenders", value=True, key="use_policy", help=f"A 'flag' becomes 'escalate' after {POLICY_THRESHOLD} earlier violations by the same sender in {POLICY_DAYS} days.")
-    if st.button("▶ Analyze all threads", type="primary", width="stretch"):
-        analyze_all()
-    if st.button("↺ Clear results (UI only)", width="stretch"):
-        R.clear()
-        st.rerun()
-    st.divider()
-    _s = st.session_state.get("stats", {"calls": 0, "hits": 0, "errors": 0, "live": 0, "ms": 0})
-    st.caption(f"**Session:** {_s['calls']} judged · {_s['hits']} cache hits · {_s['errors']} failed · "
-               f"avg {(_s['ms'] // _s['live']) if _s['live'] else 0} ms/call")
-    with db() as _c:
-        _n_cache = _c.execute("SELECT COUNT(*) FROM llm_cache").fetchone()[0]
-    st.caption(f"**LLM cache:** {_n_cache} entries (SQLite)")
-    if st.button("🧹 Clear LLM cache", width="stretch"):
+    with st.expander("📈 Session"):
+        _s = st.session_state.get("stats", {"calls": 0, "hits": 0, "errors": 0, "live": 0, "ms": 0})
+        st.caption(f"{_s['calls']} judged · {_s['hits']} cache hits · {_s['errors']} failed · avg {(_s['ms'] // _s['live']) if _s['live'] else 0} ms/call")
         with db() as _c:
-            _c.execute("DELETE FROM llm_cache")
-        st.rerun()
-    st.divider()
-    flt = st.multiselect("Filter feed", LABELS + ["Not analyzed"], default=LABELS + ["Not analyzed"])
-    st.divider()
-    st.caption("Zero-training LLM Judge · Roman Urdu + Urdu script + English · k=2 context window")
+            _n_cache = _c.execute("SELECT COUNT(*) FROM llm_cache").fetchone()[0]
+        st.caption(f"LLM cache: {_n_cache} entries (SQLite)")
+        if st.button("↺ Clear results (UI only)", width="stretch"):
+            R.clear()
+            st.rerun()
+        if st.button("🧹 Clear LLM cache", width="stretch"):
+            with db() as _c:
+                _c.execute("DELETE FROM llm_cache")
+            st.rerun()
 
-st.title("🛡️ Cyberbullying Detection System")
-st.caption("Agentic LLM Judge: no training data, works on day 0")
+# ----- Navigation (only the selected page runs, so the app stays fast) -----
+NAV = [("home", "🏠 Home", [("home", "Overview")]),
+       ("analyze", "🔎 Analyze", [("review", "📋 Threads"), ("live", "⚡ Live check"), ("second", "⚖️ Second opinion"), ("voice", "🎙️ Voice"),
+                                  ("ocr", "🖼️ Screenshot"), ("batch", "📦 Batch CSV")]),
+       ("deep", "🧠 Deep analysis", [("dyn", "🕸️ Dynamics"), ("xai", "🔍 Evidence"), ("debate", "⚔️ Debate"), ("nudge", "✍️ Rewrite")]),
+       ("mod", "🛡️ Moderation", [("queue", "✅ Review queue"), ("risk", "👤 User risk"), ("threat", "🚨 Threat triage"), ("policy", "📜 Policy"),
+                                 ("mem", "🧠 Memory"), ("camp", "🕵️ Campaigns"), ("pack", "📁 Evidence pack"), ("red", "🧪 Red-team")]),
+       ("rep", "📊 Reports", [("eval", "📊 Evaluation"), ("fair", "⚖️ Fairness"), ("script", "🌐 Cross-script"), ("hist", "🗂️ Analytics & log")])]
+_SEC_LABEL = {sid: lab for sid, lab, _ in NAV}
+_SEC_PAGES = {sid: pg for sid, _, pg in NAV}
 
-# ----- KPI row -----
-done = [R[t["id"]] for t in THREADS if t["id"] in R]
-k1, k2, k3, k4, k5, k6 = st.columns(6)
-k1.metric("Threads", len(THREADS))
-k2.metric("Analyzed", len(done))
-k3.metric("Safe", sum(r["label"] == "Safe" and r["status"] == "ok" for r in done))
-k4.metric("Flagged", sum(r["final_action"] == "flag" for r in done))
-k5.metric("Escalated", sum(r["final_action"] == "escalate" for r in done))
-k6.metric("Pending review", pending_count())
 
-g_an, g_deep, g_mod, g_rep = st.tabs(["🔎 Analyze", "🧠 Deep analysis", "🛡️ Moderation", "📊 Reports"])
-with g_an:
-    tab_review, tab_live, tab_second, tab_voice, tab_ocr, tab_batch = st.tabs(
-        ["📋 Thread Review", "⚡ Live Analyzer", "⚖️ Second Opinion", "🎙️ Voice", "🖼️ Screenshot (OCR)", "📦 Batch CSV"])
-with g_deep:
-    tab_dyn, tab_xai, tab_debate, tab_nudge = st.tabs(["🕸️ Conversation Dynamics", "🔍 Evidence & Proof", "⚔️ Adversarial Debate", "✍️ Think Before You Send"])
-with g_mod:
-    tab_queue, tab_risk, tab_threat, tab_policy, tab_mem, tab_camp, tab_pack, tab_red = st.tabs(
-        ["✅ Review Queue", "👤 User Risk", "🚨 Threat Triage", "📜 Policy Sandbox", "🧠 Moderator Memory", "🕵️ Campaign Detector", "📁 Evidence Pack", "🧪 Red-Team Lab"])
-with g_rep:
-    tab_eval, tab_fair, tab_script, tab_hist = st.tabs(["📊 Evaluation", "⚖️ Fairness Audit", "🌐 Cross-script Audit", "🗂️ Analytics & Log"])
+def goto(sec, page):
+    """Button callback: jump to a page."""
+    st.session_state["nav_section"] = sec
+    st.session_state[f"nav_page_{sec}"] = page
+
+
+def _pend_label():
+    n = pending_count()
+    return f"✅ Review queue ({n})" if n else "✅ Review queue"
+
+
+_chips = [f'<span class="chip {"ok" if _has_key else "bad"}">{"API key ✓" if _has_key else "API key missing"}</span>',
+          f'<span class="chip">{esc(_prov.title())} · {esc(get_model().split("/")[-1] if _prov == "groq" else os.getenv("GEMINI_MODEL", GEMINI_DEFAULT))}</span>']
+if st.session_state.get("use_memory"):
+    _chips.append('<span class="chip on">Memory on</span>')
+if st.session_state.get("active_policy"):
+    _chips.append('<span class="chip on">Custom policy</span>')
+st.markdown(f'<div class="hero"><div><h1>🛡️ Cyberbullying Detection</h1>'
+            f'<p>An agentic LLM judge for Roman Urdu, Urdu script and English. No training data, works on day 0.</p></div>'
+            f'<div class="chips">{"".join(_chips)}</div></div>', unsafe_allow_html=True)
+if not _has_key:
+    st.warning(f"No {'GROQ_API_KEY' if _prov == 'groq' else 'GEMINI_API_KEY'} found. Add it in Streamlit Secrets or .env. "
+               "Until then only the offline keyword heuristic runs (if enabled in Settings).")
+
+st.session_state.setdefault("nav_section", "home")
+_sec = st.radio("Section", [sid for sid, _, _ in NAV], format_func=_SEC_LABEL.get, horizontal=True, key="nav_section", label_visibility="collapsed")
+_pages = _SEC_PAGES[_sec]
+if len(_pages) > 1:
+    _plabel = dict(_pages)
+    _plabel["queue"] = _pend_label()
+    PAGE = st.radio("Page", [k for k, _ in _pages], format_func=lambda k: _plabel[k], horizontal=True, key=f"nav_page_{_sec}", label_visibility="collapsed")
+else:
+    PAGE = _pages[0][0]
+
+# ----- Home -----
+if PAGE == "home":
+    done = [R[t["id"]] for t in THREADS if t["id"] in R]
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.metric("Demo threads", len(THREADS))
+    k2.metric("Analyzed", len(done))
+    k3.metric("Flagged", sum(r["final_action"] == "flag" for r in done))
+    k4.metric("Escalated", sum(r["final_action"] == "escalate" for r in done))
+    k5.metric("Pending review", pending_count())
+    left, right = st.columns([1.2, 1], gap="large")
+    with left:
+        st.subheader("Quick check")
+        hq = st.text_area("Message", key="home_q", height=90, label_visibility="collapsed",
+                          placeholder="Paste or type a message to check: Tum bohat bewakoof ho  /  تم بہت بیوقوف ہو  /  You are pathetic")
+        if st.button("🔍 Check message", type="primary", disabled=not hq.strip(), key="home_check"):
+            with st.spinner("Running the judge..."):
+                st.session_state.home_res = run_thread({"id": "live", "sender": "", "messages": [{"text": hq.strip()}]}, source="live")
+        if "home_res" in st.session_state:
+            show_result(st.session_state.home_res, "home")
+        elif not done:
+            st.info("New here? Type a message above, or click **▶ Analyze demo threads** in the sidebar.")
+        st.subheader("Jump to")
+        tiles = [("⚡ Live check", "analyze", "live", "Judge a message with context"), ("🎙️ Voice note", "analyze", "voice", "Whisper, then judge"),
+                 ("🖼️ Screenshot", "analyze", "ocr", "Read a chat image"), ("✅ Review queue", "mod", "queue", "Human decisions"),
+                 ("🚨 Threat triage", "mod", "threat", "How urgent is it?"), ("📊 Evaluation", "rep", "eval", "Accuracy and fairness")]
+        for i in range(0, len(tiles), 3):
+            cols = st.columns(3)
+            for col, (lab, sec_, pg_, hint) in zip(cols, tiles[i:i + 3]):
+                col.button(lab, key=f"tile_{pg_}", on_click=goto, args=(sec_, pg_), width="stretch", help=hint)
+    with right:
+        st.subheader("Latest flagged")
+        with db() as c:
+            lf = pd.read_sql_query("SELECT thread_id, user_id, effective_label, final_action, context, created_at FROM v_effective "
+                                   "WHERE effective_label <> 'Safe' ORDER BY id DESC LIMIT 6", c)
+            lc = pd.read_sql_query("SELECT effective_label AS label, COUNT(*) AS n FROM v_effective GROUP BY effective_label", c)
+        if lf.empty:
+            st.caption("Nothing flagged yet.")
+        for r in lf.itertuples():
+            st.markdown(f'<div class="flag-item" style="border-left-color:{COLOR[r.effective_label]}">{badge(r.effective_label)} <b>{esc(str(r.final_action).upper())}</b>'
+                        f'<div dir="auto" style="margin:4px 0">{esc(target_of(r.context)[:140])}</div>'
+                        f'<div class="meta">{("@" + esc(str(r.user_id)) + " · ") if r.user_id else ""}{esc(str(r.thread_id))} · {esc(str(r.created_at))}</div></div>',
+                        unsafe_allow_html=True)
+        if len(lc):
+            st.markdown("**Verdicts logged**")
+            st.bar_chart(lc.set_index("label")["n"].reindex(LABELS, fill_value=0), height=150)
 
 # ----- Tab 1: Thread review -----
-with tab_review:
+if PAGE == "review":
     left, right = st.columns([1, 1.5])
     with left:
         st.subheader("Thread Feed")
+        flt = st.multiselect("Show", LABELS + ["Not analyzed"], default=LABELS + ["Not analyzed"], key="feed_filter")
         shown = 0
         for t in THREADS:
             res = R.get(t["id"])
@@ -1950,9 +2052,9 @@ with tab_review:
             show_scan(sc)
 
 # ----- Tab 2: Live analyzer -----
-with tab_live:
+if PAGE == "live":
     st.subheader("Try your own message")
-    st.caption("Type any Roman Urdu / Urdu / English message. Add earlier messages for context (one per line, optional).")
+    intro("Type any Roman Urdu / Urdu / English message. Add earlier messages for context (one per line, optional).")
     ctx_in = st.text_area("Previous messages (optional, max 2 used)", height=80, placeholder="Tum kal kahan the?\nTumhe kya matlab")
     msg_in = st.text_input("Target message", placeholder="Tum bohat bewakoof ho  /  تم بہت بیوقوف ہو")
     user_in = st.text_input("Sender handle (optional, feeds the user risk profile)", key="live_user")
@@ -1965,9 +2067,9 @@ with tab_live:
         show_result(st.session_state.live, "live")
 
 # ----- Tab: Second opinion -----
-with tab_second:
+if PAGE == "second":
     st.subheader("⚖️ Second opinion: two judges, one verdict")
-    st.caption(f"`{JUDGE_MODELS[0]}` and `{JUDGE_MODELS[1]}` judge the same message independently. If they disagree, the stricter "
+    intro(f"`{JUDGE_MODELS[0]}` and `{JUDGE_MODELS[1]}` judge the same message independently. If they disagree, the stricter "
                "verdict is logged with low confidence so a human decides.")
     if os.getenv("LLM_PROVIDER", "groq").lower() != "groq":
         st.info("Second opinion compares two Groq models. Set LLM_PROVIDER=groq to use it.")
@@ -2025,9 +2127,9 @@ with tab_second:
                     st.success("Logged. It now appears in the Review Queue.")
 
 # ----- Tab 3: Voice analyzer (Whisper -> LLM Judge) -----
-with tab_voice:
+if PAGE == "voice":
     st.subheader("Voice note analysis")
-    st.caption("Record or upload a voice note (Urdu, Roman Urdu speech, or English). Whisper transcribes it, then the LLM Judge classifies it.")
+    intro("Record or upload a voice note (Urdu, Roman Urdu speech, or English). Whisper transcribes it, then the LLM Judge classifies it.")
     lang_label = st.radio("Spoken language", ["Auto-detect", "Urdu", "English"], horizontal=True)
     lang = {"Auto-detect": None, "Urdu": "ur", "English": "en"}[lang_label]
     audio, fname = None, "voice.wav"
@@ -2054,9 +2156,9 @@ with tab_voice:
         show_result(st.session_state.voice_res, "voice")
 
 # ----- Tab 4: Screenshot OCR -----
-with tab_ocr:
+if PAGE == "ocr":
     st.subheader("Chat screenshot analysis")
-    st.caption("Upload a screenshot of a chat (Urdu script, Roman Urdu or English). A vision model transcribes it, you can fix the "
+    intro("Upload a screenshot of a chat (Urdu script, Roman Urdu or English). A vision model transcribes it, you can fix the "
                "transcript, then the LLM Judge classifies the last message (earlier ones are context) or scans every message.")
     shot = st.file_uploader("Chat screenshot", type=["png", "jpg", "jpeg", "webp"], key="shot")
     if shot is not None:
@@ -2093,9 +2195,9 @@ with tab_ocr:
             show_scan(st.session_state.ocr_scan)
 
 # ----- Tab 5: Batch CSV -----
-with tab_batch:
+if PAGE == "batch":
     st.subheader("Batch analysis from CSV")
-    st.caption("Upload a CSV with a text column (text / message / comment). Optional `thread_id` column: earlier rows of the same thread are "
+    intro("Upload a CSV with a text column (text / message / comment). Optional `thread_id` column: earlier rows of the same thread are "
                "used as context. Optional `user` / `sender` column: feeds user risk profiles. Rows are judged in parallel; empty rows are skipped.")
     sample = pd.DataFrame({"thread_id": ["a", "a", "a", "b"], "user": ["ali", "sara", "ali", "omar"],
                            "text": ["Tum kal kahan the?", "Tumhe kya matlab", "Tum ek bewakoof ho", "Good morning everyone"]})
@@ -2138,9 +2240,9 @@ with tab_batch:
 # ----- Tab 6: Reviewer queue -----
 Q_OPTIONS = {"✅ Approve model label": ("approve", None), "🟢 Dismiss: it is Safe": ("dismiss", "Safe"),
              "🟠 Reclassify → Harassment": ("reclassify", "Harassment"), "🔴 Reclassify → Severe Abuse": ("reclassify", "Severe Abuse")}
-with tab_queue:
+if PAGE == "queue":
     st.subheader("Reviewer queue")
-    st.caption("Everything that is not a confident Safe lands here: flagged / escalated messages, low-confidence calls, and anything the "
+    intro("Everything that is not a confident Safe lands here: flagged / escalated messages, low-confidence calls, and anything the "
                "LLM failed on. Highest priority first. Decisions feed the user risk profiles.")
     with db() as c:
         allp = pd.read_sql_query("SELECT * FROM v_effective", c)
@@ -2193,9 +2295,9 @@ with tab_queue:
                             st.rerun()
 
 # ----- Tab 7: User risk profiles -----
-with tab_risk:
+if PAGE == "risk":
     st.subheader("User risk profiles")
-    st.caption(f"Risk = 100 × (1 − e^(−S/3)), where S = Σ severity (Harassment 1, Severe Abuse 3) × confidence × 0.5^(age / {HALF_LIFE_DAYS:.0f} days). "
+    intro(f"Risk = 100 × (1 − e^(−S/3)), where S = Σ severity (Harassment 1, Severe Abuse 3) × confidence × 0.5^(age / {HALF_LIFE_DAYS:.0f} days). "
                "Reviewer decisions override model labels and count as full confidence; heuristic/failed judgements count half. "
                "Sender handles in the demo threads are synthetic.")
     with db() as c:
@@ -2250,9 +2352,9 @@ def show_dynamics(res, msgs):
     st.caption(f"{res.get('_model', '')} · {'cache hit' if res.get('_cached') else 'live call'} · AI-generated analysis, confirm before acting.")
 
 
-with tab_dyn:
+if PAGE == "dyn":
     st.subheader("🕸️ Conversation dynamics: who is doing what to whom?")
-    st.caption("A single-message label can't tell a heated argument from bullying. This reads the whole thread and applies the research "
+    intro("A single-message label can't tell a heated argument from bullying. This reads the whole thread and applies the research "
                "definition of cyberbullying (intent + repetition + power imbalance), assigns each person a role, draws who targets whom, "
                "finds the turning point and proposes interventions.")
     _has_ocr = "ocr_df" in st.session_state and len(st.session_state.ocr_df)
@@ -2278,9 +2380,9 @@ with tab_dyn:
         show_dynamics(st.session_state.dyn["res"], st.session_state.dyn["msgs"])
 
 # ----- Tab: Evidence & counterfactual proof -----
-with tab_xai:
+if PAGE == "xai":
     st.subheader("🔍 Evidence & counterfactual proof")
-    st.caption("Explanations should be tested, not just asserted. The LLM names the abusive phrases (anything it invents that is not in the "
+    intro("Explanations should be tested, not just asserted. The LLM names the abusive phrases (anything it invents that is not in the "
                "message is discarded). Then every phrase is blanked out and the message is judged again: if the verdict drops, that phrase "
                "is **decisive**. If blanking all of them makes it Safe, the evidence is **sufficient**.")
     xo = ["Custom message"] + [f"{t['id']} · {t['messages'][-1]['text'][:45]}" for t in THREADS]
@@ -2325,9 +2427,9 @@ with tab_xai:
             st.caption("Keyword filter would match: " + (", ".join(f"`{k}`" for k in kw) if kw else "nothing (the LLM found evidence a word list misses)."))
 
 # ----- Tab: Adversarial debate -----
-with tab_debate:
+if PAGE == "debate":
     st.subheader("⚔️ Adversarial debate: prosecutor vs defender, arbiter decides")
-    st.caption("A single judge can be talked into a snap decision by surface features. Here a **prosecutor** builds the best honest case that the message "
+    intro("A single judge can be talked into a snap decision by surface features. Here a **prosecutor** builds the best honest case that the message "
                "is abusive, a **defender** builds the best honest case that it is acceptable (banter, venting, quoting abuse), and an **arbiter** weighs both "
                "against the chat itself. Borderline messages are where this pays off. 3 LLM calls per message.")
     dbo = ["Custom message"] + [f"{t['id']} · {t['messages'][-1]['text'][:45]}" for t in THREADS]
@@ -2400,9 +2502,9 @@ with tab_debate:
             st.warning(f"{len(dc) - len(okd)} threads failed and are excluded.")
 
 # ----- Tab: Think before you send -----
-with tab_nudge:
+if PAGE == "nudge":
     st.subheader("✍️ Think before you send")
-    st.caption("Prevention beats moderation. Type a message before sending it: if it would be flagged, the assistant rewrites it so the honest "
+    intro("Prevention beats moderation. Type a message before sending it: if it would be flagged, the assistant rewrites it so the honest "
                "point survives without the abuse (same language and script), then **re-judges its own rewrite** and retries if it is still flagged.")
     n_prev = st.text_area("Conversation so far (optional, one message per line)", height=70, key="nd_prev")
     n_draft = st.text_area("Your draft", height=90, key="nd_draft", placeholder="Tum bohat bewakoof ho, mera kaam kharab kar diya  /  تم نے میرا کام خراب کر دیا")
@@ -2454,9 +2556,9 @@ def show_triage(a):
     st.caption("Decision support, not a prediction of violence. The LLM only extracts features; the points above are fixed rules you can audit.")
 
 
-with tab_threat:
+if PAGE == "threat":
     st.subheader("🚨 Threat triage: how urgent is this?")
-    st.caption("Severity labels say *what kind* of abuse it is; triage says *how fast someone must act*. The LLM only extracts factual features "
+    intro("Severity labels say *what kind* of abuse it is; triage says *how fast someone must act*. The LLM only extracts factual features "
                "(how specific, whether a target and means are named, imminence, knowledge of location, extortion). A fixed, transparent rubric turns them into "
                "an urgency score, so the number is never an LLM opinion.")
     tho = ["Custom message"] + [f"{t['id']} · {t['messages'][-1]['text'][:45]}" for t in THREADS]
@@ -2499,9 +2601,9 @@ with tab_threat:
         st.caption("A Severe Abuse label with low urgency is possible (e.g. hate speech without a threat); both views matter.")
 
 # ----- Tab: Policy sandbox -----
-with tab_policy:
+if PAGE == "policy":
     st.subheader("📜 Policy sandbox: set the rules for your community, then test them")
-    st.caption("A school group and a friends' chat need different strictness. Write or pick a policy, **A/B-test** it against the built-in rules on the demo set to see "
+    intro("A school group and a friends' chat need different strictness. Write or pick a policy, **A/B-test** it against the built-in rules on the demo set to see "
                "exactly which verdicts flip, then apply it app-wide. A hard safety floor stays in place: no policy can lower threats, hate, sexual harassment, "
                "blackmail, doxxing or encouraging self-harm.")
     pre = st.selectbox("Start from a preset", list(POLICY_PRESETS), key="pol_preset")
@@ -2556,9 +2658,9 @@ with tab_policy:
             st.caption("The policy text changed since the test. Re-run the A/B test before applying it.")
 
 # ----- Tab: Moderator memory -----
-with tab_mem:
+if PAGE == "mem":
     st.subheader("🧠 Moderator memory: learning without training")
-    st.caption("Every Approve / Dismiss / Reclassify in the Review Queue becomes a verified example. With memory switched on "
+    intro("Every Approve / Dismiss / Reclassify in the Review Queue becomes a verified example. With memory switched on "
                "(sidebar → Performance & policy), the judge sees the most similar past decisions before it answers, so one correction "
                "can fix the whole family of near-duplicate and spelling-variant messages. No model is retrained, and you can inspect or remove everything it knows.")
     mem = load_memory()
@@ -2621,9 +2723,9 @@ with tab_mem:
             st.warning("No usable answers. Check the API key and try again.")
 
 # ----- Tab: Campaign detector -----
-with tab_camp:
+if PAGE == "camp":
     st.subheader("🕵️ Campaign detector: coordinated harassment")
-    st.caption("One abusive message is bullying. The same abuse copy-pasted by several accounts, or three accounts piling onto one person in "
+    intro("One abusive message is bullying. The same abuse copy-pasted by several accounts, or three accounts piling onto one person in "
                "several chats, is a campaign. This finds near-duplicate abuse (spelling-robust), pile-ons (≥ N different senders flagged in one thread) "
                "and pairs of senders that keep attacking together.")
     src = st.radio("Data", ["Logged moderation data", "Simulated pile-on scenario"], horizontal=True, key="camp_src")
@@ -2682,9 +2784,9 @@ with tab_camp:
         st.caption("Heuristic signals for a human to investigate, not proof of coordination: friends can also share a joke or a grudge.")
 
 # ----- Tab: Evidence pack -----
-with tab_pack:
+if PAGE == "pack":
     st.subheader("📁 Evidence pack (tamper-evident)")
-    st.caption("Bundle flagged messages into a case file for the person targeted to submit to the DRF helpline or the NCCIA. Each entry is chained "
+    intro("Bundle flagged messages into a case file for the person targeted to submit to the DRF helpline or the NCCIA. Each entry is chained "
                "with SHA-256, so any later edit, deletion or reordering is detectable. The verifier below checks a pack you were given.")
     with db() as c:
         pk = pd.read_sql_query("SELECT * FROM v_effective WHERE effective_label <> 'Safe' ORDER BY id", c)
@@ -2722,9 +2824,9 @@ with tab_pack:
         (st.success if ok else st.error)(("✅ " if ok else "❌ ") + msg)
 
 # ----- Tab: Red-Team Lab -----
-with tab_red:
+if PAGE == "red":
     st.subheader("🧪 Red-Team Lab: can the judge be evaded?")
-    st.caption("Bullies disguise abuse: stretched vowels, leetspeak, dots, zero-width characters, even prompt injection. This lab generates "
+    intro("Bullies disguise abuse: stretched vowels, leetspeak, dots, zero-width characters, even prompt injection. This lab generates "
                "those variants of one abusive message, judges each one, and compares the LLM with a plain keyword filter. "
                "Nothing here is written to the moderation log.")
     abusive = [t for t in THREADS if t["expected"] != "Safe"]
@@ -2764,7 +2866,7 @@ with tab_red:
         st.download_button("⬇ Download attack results", rdf.to_csv(index=False).encode("utf-8"), "redteam_results.csv", "text/csv")
 
 # ----- Tab 8: Evaluation -----
-with tab_eval:
+if PAGE == "eval":
     st.subheader(f"Accuracy on {len(THREADS)} demo threads")
     if st.button("Run evaluation"):
         analyze_all()
@@ -2877,9 +2979,9 @@ with tab_eval:
                 st.warning("Neither model produced usable answers. Check the API key and try again.")
 
 # ----- Tab: Fairness audit -----
-with tab_fair:
+if PAGE == "fair":
     st.subheader("⚖️ Fairness audit: does the judge over-flag identity words?")
-    st.caption("A moderation system must not punish people for naming who they are. The same benign sentence is judged with different identity "
+    intro("A moderation system must not punish people for naming who they are. The same benign sentence is judged with different identity "
                "terms swapped in (plus neutral controls such as *engineer*). Every sentence is harmless by construction, so every flag is a false "
                "positive, and a term flagged more often than the controls signals bias. Nothing is logged.")
     all_terms = [t for ts in FAIR_TERMS.values() for t in ts]
@@ -2926,9 +3028,9 @@ with tab_fair:
         st.download_button("⬇ Download audit results", fd.to_csv(index=False).encode("utf-8"), "fairness_audit.csv", "text/csv")
 
 # ----- Tab: Cross-script audit -----
-with tab_script:
+if PAGE == "script":
     st.subheader("🌐 Cross-script audit: does the judge treat Roman Urdu and Urdu script alike?")
-    st.caption("Pakistani users write the same sentence as Roman Urdu or in Urdu script. A fair moderator must give both the same verdict. Each demo thread is rewritten "
+    intro("Pakistani users write the same sentence as Roman Urdu or in Urdu script. A fair moderator must give both the same verdict. Each demo thread is rewritten "
                "in Urdu script by the LLM (meaning, tone and offensive words preserved), then judged both ways. Differences show script bias. "
                f"Threads already written in Urdu script are skipped. ≈ {sum(detect_script(' '.join(m['text'] for m in t['messages'])) != 'urdu_script' for t in THREADS)} rewrite calls + the same number of new judge calls. Not logged.")
     if st.button("🌐 Run cross-script audit", type="primary", key="scr_run"):
@@ -2970,7 +3072,7 @@ with tab_script:
         st.download_button("⬇ Download audit results", sdf.to_csv(index=False).encode("utf-8"), "cross_script_audit.csv", "text/csv")
 
 # ----- Tab 9: Analytics & Log -----
-with tab_hist:
+if PAGE == "hist":
     st.subheader("Analytics & moderation log")
     with db() as c:
         hist = pd.read_sql_query(
