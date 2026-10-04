@@ -1,4 +1,3 @@
-
 # Cyberbullying Detection: Agentic LLM Judge (single-file Streamlit app). Header kept as comments on purpose.
 #
 # Needs only: streamlit, python-dotenv, requests (pandas + pillow already come with Streamlit)
@@ -62,7 +61,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 load_dotenv()
-st.set_page_config(page_title="Cyberbullying Dashboard", page_icon="🛡️", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Cyberbullying Detection", page_icon="🛡️", layout="wide")
 try:
     for _k, _v in st.secrets.items():
         if isinstance(_v, str):
@@ -1738,151 +1737,50 @@ _PREV_RE = re.compile(r"^\[Prev Message \d+\]\s*")
 
 st.markdown("""
 <style>
-:root {
-  --accent: #4f46e5;
-  --accent-2: #7c3aed;
-  --line: rgba(128,128,128,.22);
-  --soft: rgba(128,128,128,.06);
-  --card-bg: rgba(255,255,255,.55);
-  --shadow: 0 4px 24px rgba(0,0,0,.06);
-  --shadow-lg: 0 8px 32px rgba(79,70,229,.12);
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --card-bg: rgba(30,30,40,.55);
-    --soft: rgba(255,255,255,.04);
-    --line: rgba(255,255,255,.12);
-    --shadow: 0 4px 24px rgba(0,0,0,.25);
-    --shadow-lg: 0 8px 32px rgba(79,70,229,.2);
-  }
-}
-.block-container {padding-top: 0.9rem; max-width: 1320px;}
-h1,h2,h3 {letter-spacing: -.02em; font-weight: 700 !important;}
-h3 {font-size: 1.18rem !important; margin-bottom: 0.4rem !important;}
-/* Metrics as dashboard tiles */
-[data-testid="stMetric"] {
-  background: var(--card-bg);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  padding: 14px 18px;
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(8px);
-}
-[data-testid="stMetricLabel"] p {font-size: .78rem; opacity: .7; text-transform: uppercase; letter-spacing: .04em;}
-[data-testid="stMetricValue"] {font-size: 1.55rem; font-weight: 700;}
-[data-testid="stMetricDelta"] {font-size: .85rem;}
-/* Buttons */
-.stButton>button, .stDownloadButton>button, [data-testid="stFormSubmitButton"] button {
-  border-radius: 11px; font-weight: 600; transition: all .15s ease;
-  border: 1px solid var(--line);
-}
-.stButton>button[kind="primary"], [data-testid="stFormSubmitButton"] button[kind="primary"] {
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  border: none; box-shadow: 0 4px 14px rgba(79,70,229,.35);
-}
-.stButton>button:hover {transform: translateY(-1px); box-shadow: var(--shadow);}
-[data-testid="stExpander"] {border-radius: 14px; border-color: var(--line); background: var(--soft);}
-[data-testid="stVerticalBlockBorderWrapper"] {border-radius: 16px; border-color: var(--line);}
-[data-testid="stDataFrame"] {border-radius: 14px; overflow: hidden; border: 1px solid var(--line);}
-/* Hero / header bar */
-.hero {
-  display: flex; justify-content: space-between; align-items: center; gap: 18px; flex-wrap: wrap;
-  padding: 20px 26px; border-radius: 20px; margin-bottom: 14px;
-  border: 1px solid var(--line);
-  background: linear-gradient(135deg, rgba(79,70,229,.16) 0%, rgba(124,58,237,.06) 50%, transparent 100%);
-  box-shadow: var(--shadow-lg); position: relative; overflow: hidden;
-}
-.hero::before {
-  content: ""; position: absolute; top: -40%; right: -10%; width: 280px; height: 280px;
-  background: radial-gradient(circle, rgba(79,70,229,.18), transparent 70%); pointer-events: none;
-}
-.hero h1 {font-size: 1.55rem; margin: 0; padding: 0; line-height: 1.25; position: relative;}
-.hero p {margin: 4px 0 0; opacity: .72; font-size: .9rem; position: relative;}
-.chips {display: flex; gap: 7px; flex-wrap: wrap; position: relative;}
-.chip {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 3px 12px; border-radius: 999px; border: 1px solid var(--line);
-  font-size: .76rem; font-weight: 600; background: var(--card-bg); backdrop-filter: blur(6px);
-}
-.chip.ok {border-color: #16a34a; color: #16a34a; background: rgba(22,163,74,.1);}
-.chip.bad {border-color: #dc2626; color: #dc2626; background: rgba(220,38,38,.1);}
-.chip.on {border-color: var(--accent); color: var(--accent); background: rgba(79,70,229,.12);}
-/* Navigation pills */
-.st-key-nav_section div[role="radiogroup"], [class*="st-key-nav_page_"] div[role="radiogroup"] {
-  display: flex; flex-wrap: wrap; gap: 8px;
-}
+:root {--accent:#6366f1; --line:rgba(128,128,128,.28); --soft:rgba(128,128,128,.07);}
+.block-container {padding-top:1.1rem; max-width:1240px;}
+h1,h2,h3 {letter-spacing:-.01em;}
+h3 {font-size:1.22rem !important;}
+[data-testid="stMetric"] {background:var(--soft); border:1px solid var(--line); border-radius:14px; padding:12px 16px;}
+[data-testid="stMetricLabel"] p {font-size:.8rem; opacity:.75;}
+[data-testid="stMetricValue"] {font-size:1.45rem;}
+.stButton>button, .stDownloadButton>button, [data-testid="stFormSubmitButton"] button {border-radius:10px; font-weight:600;}
+[data-testid="stExpander"] {border-radius:12px; border-color:var(--line);}
+[data-testid="stVerticalBlockBorderWrapper"] {border-radius:14px;}
+[data-testid="stDataFrame"] {border-radius:12px; overflow:hidden;}
+/* hero */
+.hero {display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; padding:18px 22px;
+       border-radius:18px; border:1px solid var(--line); margin-bottom:10px;
+       background:linear-gradient(120deg, rgba(99,102,241,.18), rgba(99,102,241,.03) 65%);}
+.hero h1 {font-size:1.5rem; margin:0; padding:0; line-height:1.25;}
+.hero p {margin:3px 0 0; opacity:.78; font-size:.92rem;}
+.chips {display:flex; gap:6px; flex-wrap:wrap;}
+.chip {display:inline-block; padding:2px 10px; border-radius:999px; border:1px solid var(--line); font-size:.78rem; margin-left:6px; background:var(--soft);}
+.chips .chip {margin-left:0;}
+.chip.ok {border-color:#16a34a; color:#16a34a;} .chip.bad {border-color:#dc2626; color:#dc2626;} .chip.on {border-color:var(--accent); color:var(--accent);}
+/* navigation: radios rendered as pills */
+.st-key-nav_section div[role="radiogroup"], [class*="st-key-nav_page_"] div[role="radiogroup"] {display:flex; flex-wrap:wrap; gap:8px;}
 .st-key-nav_section label[data-baseweb="radio"], [class*="st-key-nav_page_"] label[data-baseweb="radio"] {
-  border: 1px solid var(--line); border-radius: 12px; padding: 7px 16px; margin: 0;
-  background: var(--card-bg); cursor: pointer; box-shadow: var(--shadow);
-  transition: all .15s ease; backdrop-filter: blur(6px);
-}
-.st-key-nav_section label[data-baseweb="radio"]:hover, [class*="st-key-nav_page_"] label[data-baseweb="radio"]:hover {
-  border-color: var(--accent); transform: translateY(-1px);
-}
-.st-key-nav_section label[data-baseweb="radio"] > div:first-child,
-[class*="st-key-nav_page_"] label[data-baseweb="radio"] > div:first-child {display: none;}
-.st-key-nav_section label[data-baseweb="radio"] p {font-weight: 700; font-size: .93rem;}
-[class*="st-key-nav_page_"] label[data-baseweb="radio"] p {font-size: .84rem; font-weight: 600;}
-.st-key-nav_section label[data-baseweb="radio"]:has(input:checked),
-[class*="st-key-nav_page_"] label[data-baseweb="radio"]:has(input:checked) {
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  border-color: transparent; box-shadow: 0 4px 16px rgba(79,70,229,.35);
-}
-.st-key-nav_section label[data-baseweb="radio"]:has(input:checked) *,
-[class*="st-key-nav_page_"] label[data-baseweb="radio"]:has(input:checked) * {color: #fff !important;}
-[class*="st-key-nav_page_"] {margin-top: -4px; margin-bottom: 10px;}
-/* Cards & components */
-.badge {
-  display: inline-block; padding: 4px 13px; border-radius: 999px; color: #fff;
-  font-weight: 700; font-size: .82rem; letter-spacing: .02em;
-  box-shadow: 0 2px 8px rgba(0,0,0,.15);
-}
-.card {
-  border: 1px solid var(--line); border-left-width: 5px; border-radius: 14px;
-  padding: 16px 18px; margin: 10px 0; background: var(--card-bg);
-  box-shadow: var(--shadow); backdrop-filter: blur(8px);
-}
-.msg {
-  background: var(--soft); border: 1px solid var(--line); border-radius: 12px;
-  padding: 10px 14px; margin: 5px 0; unicode-bidi: plaintext;
-}
-.target {border: 2px solid var(--accent); background: rgba(79,70,229,.06);}
-.tile {
-  border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px;
-  background: var(--card-bg); box-shadow: var(--shadow); backdrop-filter: blur(6px);
-}
-.flag-item {
-  border: 1px solid var(--line); border-left-width: 5px; border-radius: 12px;
-  padding: 11px 14px; margin: 8px 0; background: var(--card-bg);
-  box-shadow: var(--shadow); transition: transform .12s ease;
-}
-.flag-item:hover {transform: translateX(3px);}
-.flag-item .meta {font-size: .76rem; opacity: .65; margin-top: 2px;}
-mark {background: #fde68a; color: #111; padding: 1px 4px; border-radius: 4px;}
-mark.hot {background: #fecaca; border-bottom: 2px solid #dc2626; font-weight: 700;}
-.crit {
-  border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px;
-  height: 100%; background: var(--card-bg); box-shadow: var(--shadow);
-}
-/* Sidebar branding */
-section[data-testid="stSidebar"] {
-  background: linear-gradient(180deg, rgba(79,70,229,.06) 0%, transparent 30%);
-}
-section[data-testid="stSidebar"] .brand {
-  font-size: 1.2rem; font-weight: 800; margin-bottom: 2px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-}
-section[data-testid="stSidebar"] .brand-sub {font-size: .78rem; opacity: .65; margin-bottom: 12px;}
-/* Progress bars */
-.stProgress > div > div {border-radius: 999px;}
-/* Cleaner inputs */
-[data-testid="stTextInput"] input, [data-testid="stTextArea"] textarea,
-[data-baseweb="select"] > div {
-  border-radius: 11px !important; border-color: var(--line) !important;
-}
-/* Divider polish */
-hr {border-color: var(--line); opacity: .6;}
+  border:1px solid var(--line); border-radius:999px; padding:5px 15px; margin:0; background:var(--soft); cursor:pointer;}
+.st-key-nav_section label[data-baseweb="radio"] > div:first-child, [class*="st-key-nav_page_"] label[data-baseweb="radio"] > div:first-child {display:none;}
+.st-key-nav_section label[data-baseweb="radio"] p {font-weight:700; font-size:.95rem;}
+[class*="st-key-nav_page_"] label[data-baseweb="radio"] p {font-size:.85rem;}
+.st-key-nav_section label[data-baseweb="radio"]:has(input:checked), [class*="st-key-nav_page_"] label[data-baseweb="radio"]:has(input:checked) {background:var(--accent); border-color:var(--accent);}
+.st-key-nav_section label[data-baseweb="radio"]:has(input:checked) *, [class*="st-key-nav_page_"] label[data-baseweb="radio"]:has(input:checked) * {color:#fff !important;}
+[class*="st-key-nav_page_"] {margin-top:-6px; margin-bottom:6px;}
+/* components */
+.badge {display:inline-block; padding:3px 12px; border-radius:999px; color:#fff; font-weight:600; font-size:.85rem;}
+.card {border:1px solid var(--line); border-left-width:6px; border-radius:12px; padding:14px 16px; margin:8px 0; background:var(--soft);}
+.msg {background:rgba(128,128,128,.12); border-radius:10px; padding:8px 12px; margin:4px 0; unicode-bidi:plaintext;}
+.target {border:2px solid var(--accent);}
+.tile {border:1px solid var(--line); border-radius:14px; padding:14px 16px; background:var(--soft);}
+.flag-item {border:1px solid var(--line); border-left-width:5px; border-radius:10px; padding:9px 12px; margin:6px 0; background:var(--soft);}
+.flag-item .meta {font-size:.78rem; opacity:.7;}
+mark {background:#fde68a; color:#111; padding:0 3px; border-radius:3px;}
+mark.hot {background:#fecaca; border-bottom:2px solid #dc2626; font-weight:600;}
+.crit {border:1px solid var(--line); border-radius:12px; padding:10px 12px; height:100%; background:var(--soft);}
+section[data-testid="stSidebar"] .brand {font-size:1.15rem; font-weight:800; margin-bottom:2px;}
+section[data-testid="stSidebar"] .brand-sub {font-size:.8rem; opacity:.7; margin-bottom:10px;}
 </style>""", unsafe_allow_html=True)
 
 def intro(text):
@@ -1984,7 +1882,7 @@ def analyze_all():
 _prov = os.getenv("LLM_PROVIDER", "groq").lower()
 _has_key = bool(os.environ.get("GROQ_API_KEY" if _prov == "groq" else "GEMINI_API_KEY"))
 with st.sidebar:
-    st.markdown('<div class="brand">🛡️ Cyberbullying Detection</div><div class="brand-sub">Advanced moderation dashboard · Agentic LLM</div>', unsafe_allow_html=True)
+    st.markdown('<div class="brand">🛡️ Cyberbullying Detection</div><div class="brand-sub">Agentic LLM judge · Roman Urdu · Urdu · English</div>', unsafe_allow_html=True)
     if st.button("▶ Analyze demo threads", type="primary", width="stretch", help=f"Judge all {len(THREADS)} demo threads in parallel"):
         analyze_all()
     with st.expander("🧠 Models"):
@@ -2048,7 +1946,7 @@ if st.session_state.get("use_memory"):
 if st.session_state.get("active_policy"):
     _chips.append('<span class="chip on">Custom policy</span>')
 st.markdown(f'<div class="hero"><div><h1>🛡️ Cyberbullying Detection</h1>'
-            f'<p>Advanced moderation dashboard · Roman Urdu · Urdu script · English · Agentic LLM judge</p></div>'
+            f'<p>An agentic LLM judge for Roman Urdu, Urdu script and English. No training data, works on day 0.</p></div>'
             f'<div class="chips">{"".join(_chips)}</div></div>', unsafe_allow_html=True)
 if not _has_key:
     st.warning(f"No {'GROQ_API_KEY' if _prov == 'groq' else 'GEMINI_API_KEY'} found. Add it in Streamlit Secrets or .env. "
@@ -2068,27 +1966,24 @@ else:
 if PAGE == "home":
     done = [R[t["id"]] for t in THREADS if t["id"] in R]
     k1, k2, k3, k4, k5 = st.columns(5)
-    k1.metric("📁 Demo threads", len(THREADS))
-    k2.metric("✅ Analyzed", len(done))
-    k3.metric("🚩 Flagged", sum(r["final_action"] == "flag" for r in done))
-    k4.metric("⬆ Escalated", sum(r["final_action"] == "escalate" for r in done))
-    k5.metric("📋 Pending review", pending_count())
-    st.markdown("")  # spacing
-    left, right = st.columns([1.25, 1], gap="large")
+    k1.metric("Demo threads", len(THREADS))
+    k2.metric("Analyzed", len(done))
+    k3.metric("Flagged", sum(r["final_action"] == "flag" for r in done))
+    k4.metric("Escalated", sum(r["final_action"] == "escalate" for r in done))
+    k5.metric("Pending review", pending_count())
+    left, right = st.columns([1.2, 1], gap="large")
     with left:
-        with st.container(border=True):
-            st.markdown("##### ⚡ Quick check")
-            hq = st.text_area("Message", key="home_q", height=90, label_visibility="collapsed",
-                              placeholder="Paste or type a message: Tum bohat bewakoof ho  /  تم بہت بیوقوف ہو  /  You are pathetic")
-            if st.button("🔍 Check message", type="primary", disabled=not hq.strip(), key="home_check"):
-                with st.spinner("Running the judge..."):
-                    st.session_state.home_res = run_thread({"id": "live", "sender": "", "messages": [{"text": hq.strip()}]}, source="live")
-            if "home_res" in st.session_state:
-                show_result(st.session_state.home_res, "home")
-            elif not done:
-                st.info("New here? Type a message above, or click **▶ Analyze demo threads** in the sidebar.")
-        st.markdown("")
-        st.markdown("##### 🚀 Jump to")
+        st.subheader("Quick check")
+        hq = st.text_area("Message", key="home_q", height=90, label_visibility="collapsed",
+                          placeholder="Paste or type a message to check: Tum bohat bewakoof ho  /  تم بہت بیوقوف ہو  /  You are pathetic")
+        if st.button("🔍 Check message", type="primary", disabled=not hq.strip(), key="home_check"):
+            with st.spinner("Running the judge..."):
+                st.session_state.home_res = run_thread({"id": "live", "sender": "", "messages": [{"text": hq.strip()}]}, source="live")
+        if "home_res" in st.session_state:
+            show_result(st.session_state.home_res, "home")
+        elif not done:
+            st.info("New here? Type a message above, or click **▶ Analyze demo threads** in the sidebar.")
+        st.subheader("Jump to")
         tiles = [("⚡ Live check", "analyze", "live", "Judge a message with context"), ("🎙️ Voice note", "analyze", "voice", "Whisper, then judge"),
                  ("🖼️ Screenshot", "analyze", "ocr", "Read a chat image"), ("✅ Review queue", "mod", "queue", "Human decisions"),
                  ("🚨 Threat triage", "mod", "threat", "How urgent is it?"), ("📊 Evaluation", "rep", "eval", "Accuracy and fairness")]
@@ -2097,22 +1992,21 @@ if PAGE == "home":
             for col, (lab, sec_, pg_, hint) in zip(cols, tiles[i:i + 3]):
                 col.button(lab, key=f"tile_{pg_}", on_click=goto, args=(sec_, pg_), width="stretch", help=hint)
     with right:
-        with st.container(border=True):
-            st.markdown("##### 🚩 Latest flagged")
-            with db() as c:
-                lf = pd.read_sql_query("SELECT thread_id, user_id, effective_label, final_action, context, created_at FROM v_effective "
-                                       "WHERE effective_label <> 'Safe' ORDER BY id DESC LIMIT 6", c)
-                lc = pd.read_sql_query("SELECT effective_label AS label, COUNT(*) AS n FROM v_effective GROUP BY effective_label", c)
-            if lf.empty:
-                st.caption("Nothing flagged yet.")
-            for r in lf.itertuples():
-                st.markdown(f'<div class="flag-item" style="border-left-color:{COLOR[r.effective_label]}">{badge(r.effective_label)} <b>{esc(str(r.final_action).upper())}</b>'
-                            f'<div dir="auto" style="margin:4px 0">{esc(target_of(r.context)[:140])}</div>'
-                            f'<div class="meta">{("@" + esc(str(r.user_id)) + " · ") if r.user_id else ""}{esc(str(r.thread_id))} · {esc(str(r.created_at))}</div></div>',
-                            unsafe_allow_html=True)
-            if len(lc):
-                st.markdown("**Verdicts logged**")
-                st.bar_chart(lc.set_index("label")["n"].reindex(LABELS, fill_value=0), height=150)
+        st.subheader("Latest flagged")
+        with db() as c:
+            lf = pd.read_sql_query("SELECT thread_id, user_id, effective_label, final_action, context, created_at FROM v_effective "
+                                   "WHERE effective_label <> 'Safe' ORDER BY id DESC LIMIT 6", c)
+            lc = pd.read_sql_query("SELECT effective_label AS label, COUNT(*) AS n FROM v_effective GROUP BY effective_label", c)
+        if lf.empty:
+            st.caption("Nothing flagged yet.")
+        for r in lf.itertuples():
+            st.markdown(f'<div class="flag-item" style="border-left-color:{COLOR[r.effective_label]}">{badge(r.effective_label)} <b>{esc(str(r.final_action).upper())}</b>'
+                        f'<div dir="auto" style="margin:4px 0">{esc(target_of(r.context)[:140])}</div>'
+                        f'<div class="meta">{("@" + esc(str(r.user_id)) + " · ") if r.user_id else ""}{esc(str(r.thread_id))} · {esc(str(r.created_at))}</div></div>',
+                        unsafe_allow_html=True)
+        if len(lc):
+            st.markdown("**Verdicts logged**")
+            st.bar_chart(lc.set_index("label")["n"].reindex(LABELS, fill_value=0), height=150)
 
 # ----- Tab 1: Thread review -----
 if PAGE == "review":
@@ -3209,4 +3103,3 @@ if PAGE == "hist":
         d2.download_button("🖨 Download moderation report (HTML)", make_report(_rep).encode("utf-8"), "moderation_report.html", "text/html", width="stretch")
     else:
         st.caption("No predictions logged yet.")
-Change UI to Advanced Dashboard Style - Grok
